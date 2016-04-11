@@ -37,6 +37,27 @@ class AMRNode(object):
         self.has_reentrance = False
         self.graph = graph
 
+
+    def get_unvisited_children(self, visited, is_sort = True):
+        children = []
+        for i in range(len(self.v_edges)):
+            id, n = self.get_child(i)
+            if id not in visited:
+                children.append((id, n.node_str_nosuffix(), n)) # (id, label, node_obj)
+        if is_sort == True:
+            return sorted(children, key=lambda tup: tup[1])
+        else:
+            return children
+
+    def get_children_str(self):
+        return ' '.join([self.get_child(i)[1].node_str() for i in range(len(self.v_edges))])
+
+    def get_child(self, i):
+        id = self.graph.edges[self.v_edges[i]].tail
+        return (id, self.graph.nodes[id])
+
+    def
+
     def is_var_node(self):
         return not self.is_const
 
@@ -78,6 +99,9 @@ class AMRNode(object):
     def node_str(self):
         node_l = self.node_label()
         return self.graph.dict[node_l] if node_l in self.graph.dict else node_l
+
+    def node_str_nosuffix(self):
+        return self.node_str().split('-')[0]
 
     def node_label(self):
         return self.graph.edges[self.c_edge].label
@@ -206,6 +230,13 @@ class AMRGraph(object):
 
                         curr_node.add_incoming(curr_edge_index)
                         tail_node.add_parent_edge(curr_edge_index)
+
+    def get_relation_edges(self):
+        relation_edges = {}
+        for edge in self.edges:
+            if edge.head != None and edge.tail != None: # get rid of const edges
+                relation_edges[(edge.head, edge.tail)] = edge.label
+        return relation_edges
 
     def set_sentence(self, s):
         self.sent = s
