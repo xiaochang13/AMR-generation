@@ -1,4 +1,5 @@
 
+import operator
 import sys,os,collections,random,re
 import bleu_score
 import numpy
@@ -65,10 +66,11 @@ def gen_action(amr, id, naive, naive_dict, groups):
         i = [node.graph.edges[x].label for x in node.v_edges].index('name')
         cid, cn = node.get_child(i)
         return cn.get_children_str()
+    def gen_date(node):
+        pass
 
     node = amr.nodes[id]
     edge = amr.edges[node.c_edge]
-    print str(node), node.is_entity()
     if node.is_entity():
         rst = gen_entity(node)
         groups[id] = [rst,]
@@ -78,6 +80,9 @@ def gen_action(amr, id, naive, naive_dict, groups):
         # consider chunk rule now
         #if concept in naive_dict:
         #    cand += [naive[x] for x in naive_dict[concept]]
+        groups[id] = cand
+    elif edge.label not in ('',):
+        cand = [edge.label,]
         groups[id] = cand
 
 
@@ -89,6 +94,7 @@ def gen_naive_rules(amr, naive, naive_dict):
     while len(queue) > 0:
         curr = queue.popleft()
         curr_node = amr.nodes[curr]
+        # for some type of nodes, we process the entire subgraph rooted by it
         if curr_node.is_entity():
             continue
         children = curr_node.get_unvisited_children(groups, is_sort = False)
@@ -245,11 +251,26 @@ def solve_by_tsp(amr, phrases, naive, naive_dict, LM):
 if __name__ == '__main__':
     print 'loading phrase table'
     phrases = set()
+    discarded = 0
     for line in open('train.amr','rU'):
         if len(line.strip()) > 0 and line[0][0] == '(':
             line = re.sub('-[0-9]+ ', ' ', line.strip())
-            phrases.add(line)
+            try:
+                tmp = AMRGraph(line.split('|||')[0].strip())
+                phrases.add(line)
+            except Exception:
+                discarded += 1
     print 'len(phrases)', len(phrases)
+    print 'discarded', discarded
+
+    print 'loading relations'
+    rel_count, rel_trans_count = cPickle.load(open('train.rel.cp','rb'))
+    rel2trans = {}
+    for rel, subdict in rel_trans_count.iteritems():
+        trans = sorted(subdict.iteritems(), key=lambda item: -item[1])
+        trans = [x for x, y in trans[:10]]
+        rel2trans[rel] = trans
+        print rel, '-->', trans
 
     print 'loading bi-gram chunk rules'
     naive = []
@@ -269,8 +290,8 @@ if __name__ == '__main__':
     print 'solving'
     ans = []
     amr_line = ''
-    #for line in open('AMR-generation/dev/aligned_amr_nosharp','rU'):
-    for line in open('debug.amr','rU'):
+    for line in open('AMR-generation/dev/aligned_amr_nosharp','rU'):
+    #for line in open('debug.amr','rU'):
         line = line.strip()
         if len(line) == 0:
             if len(amr_line) > 0:
@@ -284,8 +305,8 @@ if __name__ == '__main__':
             amr_line = amr_line + line
 
     ref = []
-    #for line in open('AMR-generation/dev/token','rU'):
-    for line in open('debug.tok','rU'):
+    for line in open('AMR-generation/dev/token','rU'):
+    #for line in open('debug.tok','rU'):
         ref.append([line.strip().split(),])
 
     print 'Finished decoding len(ans)', len(ans), 'len(ref)', len(ref)
@@ -294,6 +315,4 @@ if __name__ == '__main__':
     # calc BLEU score
     for i in range(len(ans)):
         print 'BLEU for Sentence %d:' % i, bleu_score.sentence_bleu(ref[i], ans[i])
-    print ref
-    print ans
     print 'Corpus BLEU', bleu_score.corpus_bleu(ref, ans)
