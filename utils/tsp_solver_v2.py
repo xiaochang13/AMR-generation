@@ -43,25 +43,33 @@ def recursive_subgraph_match(amr_node, sub_node, amr_visited, sub_visited):
 
 
 def gen_subgraph_rules(amr, phrases):
-    groups = collections.defaultdict(list)
+    groups = {}
+    matched = []
     # each rule
-    for phr in phrases:
-        [itemg, items, ] = [x.strip() for x in phr.split('|||')]
-        sub = AMRGraph(itemg)
-        # each subgraph
-        for i,node in enumerate(amr.nodes):
-            if node.node_str_nosuffix() == sub.nodes[sub.root].node_str_nosuffix():
-                amr_visited = set([i,])
-                sub_visited = set([sub.root,])
-                if recursive_subgraph_match(node, sub.nodes[sub.root], amr_visited, sub_visited):
-                    # we find a match,
-                    for nid in amr_visited:
-                        groups[nid].append(items)
-    print 'subgraph rules:', len(groups)
-    return groups
+    for itemg, sublist in phrases.iteritems():
+        for items in sublist:
+            sub = AMRGraph(itemg)
+            # each subgraph
+            for i,node in enumerate(amr.nodes):
+                if node.node_str_nosuffix() == sub.nodes[sub.root].node_str_nosuffix():
+                    amr_visited = set([i,])
+                    sub_visited = set([sub.root,])
+                    if recursive_subgraph_match(node, sub.nodes[sub.root], amr_visited, sub_visited):
+                        # we find a subgraph match,
+                        if len(amr_visited) > 1:
+                            print 'match large subgraph!!!', amr_visited, items
+                            matched.append((i, amr_visited, items))
+                        ## there is only one node, should be i
+                        #else:
+                        #    if i not in groups:
+                        #        groups[i] = [items, ]
+                        #    else:
+                        #        groups[i].append(items)
+    #print 'number of subgraph rule matches:', len(matched)
+    return groups, matched
 
 
-def gen_action(amr, id, naive, naive_dict, groups):
+def gen_naive_action(amr, id, naive, naive_dict, groups):
     def gen_entity(node):
         i = [node.graph.edges[x].label for x in node.v_edges].index('name')
         cid, cn = node.get_child(i)
@@ -77,7 +85,7 @@ def gen_action(amr, id, naive, naive_dict, groups):
     elif edge.label in amr.dict:
         concept = amr.dict[edge.label].split('-')[0]
         cand = [concept,]
-        # consider chunk rule now
+        ## consider chunk rule now
         #if concept in naive_dict:
         #    cand += [naive[x] for x in naive_dict[concept]]
         groups[id] = cand
@@ -90,7 +98,7 @@ def gen_naive_rules(amr, naive, naive_dict):
     queue = collections.deque()
     queue.append(amr.root)
     groups = {}
-    gen_action(amr, amr.root, naive, naive_dict, groups)
+    gen_naive_action(amr, amr.root, naive, naive_dict, groups)
     while len(queue) > 0:
         curr = queue.popleft()
         curr_node = amr.nodes[curr]
@@ -100,7 +108,7 @@ def gen_naive_rules(amr, naive, naive_dict):
         children = curr_node.get_unvisited_children(groups, is_sort = False)
         for (cid, cstr, cnode) in children:
             queue.append(cid)
-            gen_action(amr, cid, naive, naive_dict, groups)
+            gen_naive_action(amr, cid, naive, naive_dict, groups)
     print 'naive rules:', len(groups)
     return groups
 
@@ -115,12 +123,12 @@ def solve_action(matrix, row_clusters, N, K):
     # init solver
     routing = pywrapcp.RoutingModel(len(matrix), 1)
     search_parameters = pywrapcp.RoutingModel.DefaultSearchParameters()
-    #search_parameters.first_solution_strategy = (routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)
+    search_parameters.first_solution_strategy = (routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)
     routing.SetDepot(0)
     routing.SetArcCostEvaluatorOfAllVehicles(distance)
     # add disjunction
-    for st,ed in row_clusters:
-        routing.AddDisjunction(range(st,ed))
+    for nid, disj in row_clusters.iteritems():
+        routing.AddDisjunction(disj)
     # remove unnecessary connections:
     #   0 -> N-1
     #   N-1 -> [1,...,N-2]
@@ -154,114 +162,172 @@ def solve_by_tsp(amr, phrases, naive, naive_dict, LM):
                 g1[k].update(v)
             else:
                 g1[k] = set(v)
-    def prev_in_clus(st, ed, i):
-        i_prime = ed-1 if i == st else i-1
-        return i_prime
+    #def prev_in_clus(st, ed, i):
+    #    print 'assume all nodes in a cluster are together, be careful for subgraph rules'
+    #    i_prime = ed-1 if i == st else i-1
+    #    return i_prime
+    def subg_head(i, row_string, M):
+        if i < M:
+            return i
+        while row_string[i] == '':
+            i -= 1
+        assert i >= M
+        return i
+    def subg_tail(i, row_string, M, N):
+        if i < M:
+            return i
+        while i < N-1 and row_string[i+1] == '':
+            i += 1
+        assert row_string[i] == '' and row_string[i+1] != ''
+        return i
+    def LM_score(i, j, M, row_string, LM):
+        i = subg_head(i, row_string, M)
+        j = subg_head(j, row_string, M)
+        aaa = row_string[i].split()[-1]
+        bbb = row_string[j].split()[0]
+        return 100.0*(LM.score(aaa) - LM.score(aaa + ' ' + bbb)) # -log p(bbb|aaa)
 
     K = 10000
     groups = {}
-    group_update(groups, gen_naive_rules(amr, naive, naive_dict))
-    #group_update(groups, gen_subgraph_rules(amr, phrases))
-    # init matrix
-    matrix = {0:{},}
+    ggg = gen_naive_rules(amr, naive, naive_dict)
+    group_update(groups, ggg)
+    ggg, matched = gen_subgraph_rules(amr, phrases)
+    group_update(groups, ggg)
+
+    # each row index is represented as (ni, pi, string)
+    # pi is a set of ni involved in the phrase
     row_string = ['<s>',]
-    row_clusters = []     # only keep the span of the cluster
-    for (concept, candidates) in groups.iteritems():
+    row_ni = [-1,]
+    row_pi = [set(),]
+    disjunctions = {}
+    # from naive rules
+    for (nid, candidates) in groups.iteritems():
         st = len(row_string)
         for cand in candidates:
             row_string.append(cand)
-            matrix[len(row_string)-1] = {}
-        row_clusters.append((st, len(row_string), ))
+            row_ni.append(nid)
+            row_pi.append(set([nid,]))
+        disjunctions[nid] = range(st, len(row_string))
+    M = len(row_string)
+    #tmpM = M
+    # from subgraph rules
+    for (nid, idset, trans) in matched:
+        #print 'subg:',tmpM, tmpM+len(idset)-1
+        #tmpM = tmpM+len(idset)
+        row_string.append(trans)
+        row_ni.append(nid)
+        row_pi.append(idset)
+        if nid not in disjunctions:
+            disjunctions[nid] = []
+        disjunctions[nid].append(len(row_string)-1)
+        for id in idset:
+            if id != nid:
+                row_string.append('')
+                row_ni.append(id)
+                row_pi.append(idset)
+                if id not in disjunctions:
+                    disjunctions[id] = []
+                disjunctions[id].append(len(row_string)-1)
     row_string.append('</s>')
-    matrix[len(row_string)-1] = {}
+    row_ni.append(-1)
+    row_pi.append(set())
     N = len(row_string)
-    print 'matrix size N*N where N is ', N
-    print row_clusters
+
+    row_head = [0,]
+    row_tail = [0,]
+    for i in range(1, N-1):
+        row_head.append(subg_head(i,row_string,M))
+        row_tail.append(subg_tail(i,row_string,M,N))
+    row_head.append(N-1)
+    row_tail.append(N-1)
+
+    # init matrix
+    matrix = {}
+    for i in range(N):
+        matrix[i] = {}
+    print 'matrix size N*N where N is ', N, 'M is ', M
     # build tsp
     # START -> clusters
+    #    single-node rules, head of subgraph rules: LM
+    #    middle & tail nodes of subgraph rules: inf
     for i in range(1, N-1):
-        aaa = row_string[i].split()[0]
-        matrix[0][i] = -100.0*LM.score(aaa)
+        if i >= M and row_string[i] == '':
+            matrix[0][i] = K
+        else:
+            aaa = '<s> ' + row_string[i].split()[0]
+            matrix[0][i] = -100.0*LM.score(aaa)
     # END -> START
     matrix[N-1][0] = 0
-    # for out-going edge, switch the from node to the previous node
     # Cluster -> END
-    for (st,ed) in row_clusters:
-        for i in range(st, ed):
-            i_prime = prev_in_clus(st, ed, i)
-            bbb = row_string[i].split()[-1]
-            matrix[i_prime][N-1] = -100.0*LM.score(bbb)
+    #   single-node rules, tail of subgraph rules --> LM
+    #   head & middle nodes of subgraph rules: inf
+    for i in range(1,N-1):
+        if i < M or (row_string[i] == '' and row_string[i+1] != ''):
+            bbb = row_string[row_head[i]]
+            bbb = bbb.split()[-1] + ' </s>'
+            matrix[i][N-1] = -100.0*LM.score(bbb)
+        else:
+            matrix[i][N-1] = K
     # Cluster -> Cluster
-    for (st1, ed1) in row_clusters:
-        # inner
-        for i in range(st1, ed1):
-            for j in range(st1, ed1):
-                if i == j:
-                    matrix[i][j] = 0
-                elif prev_in_clus(st1, ed1, j) == i:
-                    matrix[i][j] = 0
-        # outer
-        for (st2, ed2) in row_clusters:
-            # skip identical clusters
-            if st1 == st2 and ed1 == ed2:
+    for i in range(1,N-1):
+        for j in range(1,N-1):
+            if i == j:
+                matrix[i][j] = 0
                 continue
-            for i in range(st1, ed1):
-                for j in range(st2, ed2):
-                    aaa = row_string[i].split()[-1]
-                    bbb = row_string[j].split()[0]
-                    i_prime = prev_in_clus(st1, ed1, i)
-                    matrix[i_prime][j] = 100.0*(LM.score(aaa) - LM.score(aaa + ' ' + bbb)) # -log p(bbb|aaa)
+            # they should be in the same disjunction, whatever value is Okay
+            if row_ni[i] == row_ni[j]:
+                assert i in disjunctions[row_ni[i]] and j in disjunctions[row_ni[i]]
+                matrix[i][j] = 0
+            elif row_head[i] == row_head[j]:
+                if i+1 == j:
+                    matrix[i][j] = 0
+                else:
+                    matrix[i][j] = K
+            else:
+                sect = row_pi[i] & row_pi[j]
+                if row_tail[i] == i and row_head[j] == j and len(sect) == 0:
+                    matrix[i][j] = LM_score(i, j, M, row_string, LM)
+                else:
+                    matrix[i][j] = K
+
+    #mat = numpy.full((N,N),K)
+    #for i,sub in matrix.iteritems():
+    #    for j,val in sub.iteritems():
+    #        mat[i][j] = val
+    #numpy.set_printoptions(threshold='nan')
+    #print mat
+    #import matplotlib.pylab as plt
+    #fig = plt.figure()
+    #ax = fig.add_subplot(1,1,1)
+    #ax.set_aspect('equal')
+    #plt.imshow(mat, interpolation="nearest")
+    #plt.colorbar()
+    #plt.show()
+
     # solve action
-    ret = solve_action(matrix, row_clusters, N, K)
+    ret = solve_action(matrix, disjunctions, N, K)
     # build generated string
     # if no answer, then output all concept in breadth first search
     if ret == None:
         return ['<s>',] + [x for x in groups.iterkeys()] + ['</s>',]
     else:
-        # make row of cluster id, for fast compute
-        row_cluster_id = [0,]
-        cur_id = 1
-        for (st, ed) in row_clusters:
-            row_cluster_id += [cur_id,]*(ed-st)
-            cur_id += 1
-        row_cluster_id.append(cur_id)
-        # generate result
         result = []
         (cost,route) = ret
         for i in route:
             if 0 < i and i < N-1:
                 result += row_string[i].split()
         return result
-        # old version
-        #visited_id = set()
-        #last_id = -1
-        #for i in route[1:-1]:
-        #    i = int(i)
-        #    id = row_cluster_id[i]  # id of group
-        #    if id != last_id:
-        #        result.append(row_string[i]) # get trans (i), not group (id)
-        #        if id not in visited_id:
-        #            visited_id.add(last_id)
-        #        else:
-        #            print 'get away from a group', i
-        #    last_id = id
-        #assert len(groups) <= len(result)
-        return result
 
 if __name__ == '__main__':
     print 'loading phrase table'
-    phrases = set()
-    discarded = 0
-    for line in open('train.amr','rU'):
-        if len(line.strip()) > 0 and line[0][0] == '(':
-            line = re.sub('-[0-9]+ ', ' ', line.strip())
-            try:
-                tmp = AMRGraph(line.split('|||')[0].strip())
-                phrases.add(line)
-            except Exception:
-                discarded += 1
-    print 'len(phrases)', len(phrases)
-    print 'discarded', discarded
+    amr_trans_count = cPickle.load(open('train.amr.filtered.cp','rb'))
+    # keep top 10
+    phrases = {}
+    for amr, subdict in amr_trans_count.iteritems():
+        trans = sorted(subdict.iteritems(), key=lambda item: -item[1])
+        trans = [x for x, y in trans[:10]]
+        phrases[amr] = trans
+
 
     print 'loading relations'
     rel_count, rel_trans_count = cPickle.load(open('train.rel.cp','rb'))
@@ -270,7 +336,7 @@ if __name__ == '__main__':
         trans = sorted(subdict.iteritems(), key=lambda item: -item[1])
         trans = [x for x, y in trans[:10]]
         rel2trans[rel] = trans
-        print rel, '-->', trans
+
 
     print 'loading bi-gram chunk rules'
     naive = []
@@ -287,11 +353,18 @@ if __name__ == '__main__':
     LM = kenlm.LanguageModel('train.token.lm.arpa')
     print '%d-gram model' % LM.order
 
+    print 'loading reference'
+    ref = []
+    #for line in open('debug.tok','rU'):
+    for line in open('AMR-generation/dev/token','rU'):
+        ref.append([line.strip().split(),])
+
     print 'solving'
     ans = []
     amr_line = ''
-    for line in open('AMR-generation/dev/aligned_amr_nosharp','rU'):
+    i = 0
     #for line in open('debug.amr','rU'):
+    for line in open('AMR-generation/dev/aligned_amr_nosharp','rU'):
         line = line.strip()
         if len(line) == 0:
             if len(amr_line) > 0:
@@ -299,20 +372,15 @@ if __name__ == '__main__':
                 rst = solve_by_tsp(amr, phrases, naive, naive_dict, LM)
                 ans.append(rst)
                 print 'SENT: ', ' '.join(rst)
+                print 'BLEU for Sentence %d:' % i, bleu_score.sentence_bleu(ref[i], rst)
+                i += 1
             amr_line = ''
         else:
             assert line.startswith('#') == False
             amr_line = amr_line + line
+    print 'Finished decoding'
 
-    ref = []
-    for line in open('AMR-generation/dev/token','rU'):
-    #for line in open('debug.tok','rU'):
-        ref.append([line.strip().split(),])
-
-    print 'Finished decoding len(ans)', len(ans), 'len(ref)', len(ref)
-
+    print 'dumping result'
     cPickle.dump((ans,ref), open('result.cp','wb'))
-    # calc BLEU score
-    for i in range(len(ans)):
-        print 'BLEU for Sentence %d:' % i, bleu_score.sentence_bleu(ref[i], ans[i])
     print 'Corpus BLEU', bleu_score.corpus_bleu(ref, ans)
+

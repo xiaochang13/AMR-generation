@@ -181,8 +181,10 @@ class Rule(object):
             print line
             print s
             sys.exit(-1)
-        if len(s) > 3:
+        if len(s) == 4:
             lhs, f, e, probs = s
+        elif len(s) == 5:
+            lhs, f, e, probs, _tmp = s
         else:
             lhs, f, e = s
             probs = ''
