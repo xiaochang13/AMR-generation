@@ -314,7 +314,7 @@ def solve_by_tsp(amr, phrases, naive, naive_dict, LM):
         result = []
         (cost,route) = ret
         for i in route:
-            if 0 < i and i < N-1:
+            if 0 < i and i < N-1 and len(row_string[i]) > 0:
                 result += row_string[i].split()
         return result
 
@@ -355,15 +355,14 @@ if __name__ == '__main__':
 
     print 'loading reference'
     ref = []
-    #for line in open('debug.tok','rU'):
     for line in open('AMR-generation/dev/token','rU'):
         ref.append([line.strip().split(),])
 
+    f = open('log.bleu','w')
     print 'solving'
     ans = []
     amr_line = ''
     i = 0
-    #for line in open('debug.amr','rU'):
     for line in open('AMR-generation/dev/aligned_amr_nosharp','rU'):
         line = line.strip()
         if len(line) == 0:
@@ -371,10 +370,11 @@ if __name__ == '__main__':
                 amr = AMRGraph(amr_line.strip())
                 rst = solve_by_tsp(amr, phrases, naive, naive_dict, LM)
                 ans.append(rst)
-                print 'SENT: ', ' '.join(rst)
-                print 'BLEU for Sentence %d:' % i, bleu_score.sentence_bleu(ref[i], rst)
+                print >>f, 'SENT: ', ' '.join(rst)
+                print >>f, 'BLEU for Sentence %d:' % i, bleu_score.sentence_bleu(ref[i], rst)
+                print >>f, 'Corpus BLEU', bleu_score.corpus_bleu(ref[:i+1], ans)
                 i += 1
-            amr_line = ''
+                amr_line = ''
         else:
             assert line.startswith('#') == False
             amr_line = amr_line + line
@@ -382,5 +382,4 @@ if __name__ == '__main__':
 
     print 'dumping result'
     cPickle.dump((ans,ref), open('result.cp','wb'))
-    print 'Corpus BLEU', bleu_score.corpus_bleu(ref, ans)
 
