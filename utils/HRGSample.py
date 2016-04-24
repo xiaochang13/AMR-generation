@@ -9,13 +9,13 @@ import random
 import sys
 from math import log, exp, factorial, lgamma
 import logprob
-from lexical_weighter import LexicalWeighter
+#from lexical_weighter import LexicalWeighter
 from common import INF, ZERO
 from levels import mark_level
 #from monitor import memory, resident
 from collections import deque
 from operator import itemgetter
-from filter_stop_words import filter_vars
+#from filter_stop_words import filter_vars
 #from amr_fragment import check_consist
 def timed(l):
     for i, x in enumerate(l, 1):
