@@ -37,7 +37,7 @@ class AMRNode(object):
         self.has_reentrance = False
         self.graph = graph
 
-
+    # for traversal
     def get_unvisited_children(self, visited, is_sort = True):
         children = []
         for i in range(len(self.v_edges)):
@@ -49,6 +49,7 @@ class AMRNode(object):
         else:
             return children
 
+    # useful for named entity: (n/name op1 op2 ...)
     def get_children_str(self):
         return ' '.join([self.get_child(i)[1].node_str() for i in range(len(self.v_edges))])
 
@@ -56,10 +57,18 @@ class AMRNode(object):
         id = self.graph.edges[self.v_edges[i]].tail
         return (id, self.graph.nodes[id])
 
-    def
+    # more node types
+    def is_negative_polarity(self):
+        return self.node_str() == '-' and self.graph.edges[self.p_edges[0]].label == 'polarity'
 
     def is_var_node(self):
         return not self.is_const
+
+    def is_location(self):
+        pass
+
+    def is_date(self):
+        pass
 
     def set_quote(self, val):
         self.use_quote = val
@@ -144,6 +153,10 @@ class AMRNode(object):
 class AMRGraph(object):
     def __init__(self, line):
         vars, var_values, rel_links = from_AMR_line(line)
+
+        #print '============'
+        #print 'vars', vars
+        #print 'var_values', var_values
 
         self.dict = {}
         label_to_node = {}
