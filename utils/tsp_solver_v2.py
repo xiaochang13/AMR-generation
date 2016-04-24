@@ -7,7 +7,7 @@ import kenlm
 import cPickle
 import copy
 
-sys.path.append('/scratch/lsong10/exp.amr_gen/AMR-generation/utils')
+sys.path.append('/home/vax6/p43/mt-scratch2/lsong10/exp.amr_gen/AMR-generation/utils')
 
 from amr_graph import AMRNode,AMREdge,AMRGraph
 
@@ -358,6 +358,7 @@ if __name__ == '__main__':
     for line in open('AMR-generation/dev/token','rU'):
         ref.append([line.strip().split(),])
 
+
     f = open('log.bleu','w')
     print 'solving'
     ans = []
@@ -368,6 +369,8 @@ if __name__ == '__main__':
         if len(line) == 0:
             if len(amr_line) > 0:
                 amr = AMRGraph(amr_line.strip())
+                if len(ref[i][0]) > 80:
+                    print 1.0*len(ref[i][0])/len(amr.nodes)
                 rst = solve_by_tsp(amr, phrases, naive, naive_dict, LM)
                 ans.append(rst)
                 print >>f, 'SENT: ', ' '.join(rst)
