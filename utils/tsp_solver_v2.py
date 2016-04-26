@@ -359,7 +359,8 @@ if __name__ == '__main__':
         ref.append([line.strip().split(),])
 
 
-    f = open('log.bleu','w')
+    #f = open('log.bleu','w')
+    f = sys.stdout
     print 'solving'
     ans = []
     amr_line = ''

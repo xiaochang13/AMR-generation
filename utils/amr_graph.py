@@ -251,6 +251,21 @@ class AMRGraph(object):
                 relation_edges[(edge.head, edge.tail)] = edge.label
         return relation_edges
 
+    def get_from_path(self, path):
+        if path == '1':
+            return ('n', self.root)
+        path = path.split('.')
+        cur_node = self.nodes[self.root]
+        for k in range(1,len(path)):
+            offset = int(path[k])-1
+            if k == len(path)-2 and path[-1] == 'r':
+                return ('e', cur_node.v_edges[offset])
+            elif k == len(path)-1:
+                return ('n', cur_node.get_child(offset)[0])
+            else:
+                cur_node = cur_node.get_child(offset)[1]
+        assert False, 'Invalid Path:%s' % path
+
     def set_sentence(self, s):
         self.sent = s
 

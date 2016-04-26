@@ -265,6 +265,14 @@ def check_disjoint(f1, f2):
     result = f1.edges & f2.edges
     return result.count() == 0
 
+# by lsong10, merge the child graph fragment into parent
+def merge_child_fragment(fp, fc, rel_edge, refine=False):
+    fp.set_edge(rel_edge)
+    fp.nodes |= fc.nodes
+    fp.edges |= fc.edges
+    fp.build_ext_list()
+    fp.build_ext_set()
+
 #Root operation is a bold guess: that the root of combination must be a root in one of the child fragment
 def combine_fragments(f1, f2, refine=False):
     f1_rooted = (f2.root in f1.ext_set)
