@@ -43,7 +43,7 @@ class AMRNode(object):
         for i in range(len(self.v_edges)):
             id, n = self.get_child(i)
             if id not in visited:
-                children.append((id, n.node_str_nosuffix(), n)) # (id, label, node_obj)
+                children.append((id, n.node_str_nosuffix(), n)) # (n, concept, node)
         if is_sort == True:
             return sorted(children, key=lambda tup: tup[1])
         else:
@@ -56,6 +56,43 @@ class AMRNode(object):
     def get_child(self, i):
         id = self.graph.edges[self.v_edges[i]].tail
         return (id, self.graph.nodes[id])
+
+    def get_all_descendent_edge(self):
+        visited = set()
+        queue = []
+        edges = [self.c_edge,]
+        for i, e in enumerate(self.v_edges):
+            n, node = self.get_child(i)
+            visited.add(n)
+            queue.append(node)
+            edges.append(e)
+            edges.append(node.c_edge)
+        while len(queue) > 0:
+            cur_node = queue.pop(0)
+            for i, e in enumerate(cur_node.v_edges):
+                n, node = cur_node.get_child(i)
+                if n not in visited:
+                    visited.add(n)
+                    queue.append(node)
+                    edges.append(e)
+                    edges.append(node.c_edge)
+        return edges
+
+    def get_all_descendent(self):
+        visited = set()
+        queue = []
+        for i in range(len(self.v_edges)):
+            n, node = self.get_child(i)
+            visited.add(n)
+            queue.append(node)
+        while len(queue) > 0:
+            cur_node = queue.pop(0)
+            for i in range(len(cur_node.v_edges)):
+                n, node = cur_node.get_child(i)
+                if n not in visited:
+                    visited.add(n)
+                    queue.append(node)
+        return visited
 
     # more node types
     def is_negative_polarity(self):
@@ -164,6 +201,7 @@ class AMRGraph(object):
         self.node_dict = {}
         self.edges = []
         self.edge_dict = {}
+        self.root = None
 
         for i in range(len(vars)):
             curr_var = vars[i]
@@ -243,6 +281,92 @@ class AMRGraph(object):
 
                         curr_node.add_incoming(curr_edge_index)
                         tail_node.add_parent_edge(curr_edge_index)
+
+
+    def get_ancestors(self, n, stop_if_see = None):
+        set_n = {n:('',-1)}
+        queue = [n,]
+        while len(queue) > 0:
+            cur = queue.pop(0)
+            for ei in self.nodes[cur].p_edges:
+                e = self.edges[ei]
+                prn = e.head
+                if prn not in set_n:
+                    set_n[prn] = (e.label, cur)
+                    queue.append(prn)
+                if stop_if_see != None and prn in stop_if_see:
+                    return (set_n, prn)
+        return (set_n, None)
+
+    def get_path_v2(self, n1, n2):
+        if n1 == n2:
+            return [], []
+
+        prn_n1, root = self.get_ancestors(n1, {n2:None,})
+        if root != None:
+            result = []
+            while n2 != n1:
+                result.insert(0,prn_n1[n2][0])
+                n2 = prn_n1[n2][1]
+            return (result, [])
+
+        prn_n2, root = self.get_ancestors(n2, prn_n1)
+        assert root != None
+        if n1 == root:
+            result = []
+            while n1 != n2:
+                result.append(prn_n2[n1][0])
+                n1 = prn_n2[n1][1]
+            return ([], result)
+        else:
+            up = []
+            tmp = root
+            while tmp != n1:
+                up.insert(0,prn_n1[tmp][0])
+                tmp = prn_n1[tmp][1]
+            down = []
+            tmp = root
+            while tmp != n2:
+                down.append(prn_n2[tmp][0])
+                tmp = prn_n2[tmp][1]
+            return (up, down)
+
+
+    def get_path(self, n1, n2):
+        assert False, 'not fully tested, don\'t use'
+        assert n1 < len(self.nodes) and n2 < len(self.nodes)
+
+        print '---------------', n1, n2
+        set_n1 = set([n1,])
+        labels_n1 = []
+        while len(self.nodes[n1].p_edges) > 0:
+            edge = self.edges[self.nodes[n1].p_edges[0]]
+            n1_prime = edge.head
+            if n1_prime in set_n1:
+                break
+            print 'n1 part', (n1, n1_prime, edge.label)
+            labels_n1.append((n1_prime, edge.label))
+            n1 = n1_prime
+
+        set_n2 = set([n2,])
+        labels_n2 = []
+        while n2 not in set_n1 and len(self.nodes[n2].p_edges) > 0:
+            edge = self.edges[self.nodes[n2].p_edges[0]]
+            n2_prime = edge.head
+            if n2_prime in set_n2:
+                break
+            print 'n2 part', (n2, n2_prime, edge.label)
+            labels_n2.append((n2_prime, edge.label))
+            n2 = n2_prime
+
+        result = []
+        for (n1, label) in labels_n1:
+            if n1 != n2:
+                result.append(label)
+        result = result + [x[1] for x in labels_n2]
+        print result
+        return result
+
 
     def get_relation_edges(self):
         relation_edges = {}
