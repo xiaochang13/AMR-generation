@@ -87,6 +87,8 @@ def dump(f, amr, sent, alignment):
     print >>f, ''
     print ''
 
+# given the sentence, amr and alignment,
+# we enumerate all subgraphs of the amr, dump the (subamr, span) pair if it is consistent under the alignment
 if __name__ == '__main__':
     print 'loading reference'
     ref = []
