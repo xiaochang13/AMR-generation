@@ -43,7 +43,8 @@ class AMRNode(object):
         for i in range(len(self.v_edges)):
             id, n = self.get_child(i)
             if id not in visited:
-                children.append((id, n.node_str_nosuffix(), n)) # (n, concept, node)
+                children.append((id, n.node_str(), n, self.graph.edges[self.v_edges[i]].label, )) # (n, concept, node, edge-label)
+                #children.append((id, n.node_str_nosuffix(), n)) # (n, concept, node)
         if is_sort == True:
             return sorted(children, key=lambda tup: tup[1])
         else:
@@ -282,6 +283,20 @@ class AMRGraph(object):
                         curr_node.add_incoming(curr_edge_index)
                         tail_node.add_parent_edge(curr_edge_index)
 
+
+    def get_ancestor_v2(self, n):
+        ans = [n,]
+        queue = [n,]
+        while len(queue) > 0:
+            cur = queue.pop(0)
+            if cur == self.root:
+                break
+            for ei in self.nodes[cur].p_edges:
+                prn = self.edges[ei].head
+                if prn not in ans and prn >= 0:
+                    ans.append(prn)
+                    queue.append(prn)
+        return ans
 
     def get_ancestors(self, n, stop_if_see = None):
         set_n = {n:('',-1)}
